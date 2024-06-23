@@ -1,69 +1,115 @@
 use crossterm::event::{read, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers};
-use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
-use std::io::stdout;
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use std::io::Error;
+
+mod terminal;
+use crossterm::terminal::ClearType;
+use terminal::{Position, Size, Terminal};
 
 pub struct TerminalEditor {
     should_quit: bool,
-    cursor_location: (u16, u16),
+    cursor_position: Position,
 }
 
 impl TerminalEditor {
-    pub fn default() -> Self {
-        TerminalEditor {
+    pub const fn default() -> Self {
+        Self {
             should_quit: false,
-            cursor_location: (0, 0),
+            cursor_position: Position::zero(),
         }
     }
 
     pub fn run(&mut self) {
-        if let Err(err) = self.repl() {
-            panic!("{err:#?}");
-        }
-        print!("Goodbye.\r\n");
+        Terminal::initialize().unwrap();
+        let result = self.repl();
+        Terminal::terminate().unwrap();
+        result.unwrap();
     }
 
-    fn repl(&mut self) -> Result<(), std::io::Error> {
-        enable_raw_mode()?;
-        self.cursor_location = self.draw_rows();
+    fn repl(&mut self) -> Result<(), Error> {
         loop {
-            if let Key(KeyEvent {
-                code,
-                modifiers,
-                kind,
-                state,
-            }) = read()?
-            {
-                println!("Code: {code:?} Modifiers: {modifiers:?} Kind: {kind:?} State: {state:?}");
-                self.cursor_location.1 += 1;
-                execute!(
-                    stdout(),
-                    crossterm::cursor::MoveTo(self.cursor_location.0, self.cursor_location.1)
-                )
-                .unwrap();
-                match code {
-                    Char('q') if modifiers == KeyModifiers::CONTROL => {
-                        self.should_quit = true;
-                    }
-                    _ => (),
-                }
-            }
+            self.refresh_screen()?;
             if self.should_quit {
                 break;
             }
+
+            let event = read()?;
+            self.evalutate_event(&event);
         }
-        disable_raw_mode()?;
         Ok(())
     }
 
-    fn draw_rows(&self) -> (u16, u16) {
-        let terminal_size = crossterm::terminal::size();
-
-        for row in 1..terminal_size.unwrap().1 {
-            execute!(stdout(), crossterm::cursor::MoveTo(0, row)).unwrap();
-            println!("~");
+    fn evalutate_event(&mut self, event: &Event) {
+        if let Key(KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            ..
+        }) = event
+        {
+            match code {
+                Char('q') if *modifiers == KeyModifiers::CONTROL => {
+                    self.cursor_position = Position::zero();
+                    self.should_quit = true;
+                }
+                KeyCode::Right => {
+                    Terminal::move_curstor_to(terminal::Direction::RIGHT).unwrap();
+                    self.cursor_position = Terminal::get_cursor_position();
+                }
+                KeyCode::Left => {
+                    Terminal::move_curstor_to(terminal::Direction::LEFT).unwrap();
+                    self.cursor_position = Terminal::get_cursor_position();
+                }
+                KeyCode::Up => {
+                    Terminal::move_curstor_to(terminal::Direction::UP).unwrap();
+                    self.cursor_position = Terminal::get_cursor_position();
+                }
+                KeyCode::Down => {
+                    Terminal::move_curstor_to(terminal::Direction::DOWN).unwrap();
+                    self.cursor_position = Terminal::get_cursor_position();
+                }
+                _ => (),
+            }
         }
-        execute!(stdout(), crossterm::cursor::MoveTo(2, 0)).unwrap();
-        (2, 0)
+    }
+
+    fn refresh_screen(&self) -> Result<(), Error> {
+        Terminal::hide_cursor()?;
+        if self.should_quit {
+            Terminal::clear(ClearType::All)?;
+            Terminal::set_cursor_to(self.cursor_position)?;
+            Terminal::print("Goodbye.\r\n")?;
+            Terminal::show_cursor()?;
+            Terminal::execute()?;
+            return Ok(());
+        } else {
+            self.draw_rows()?;
+            let size = Terminal::size()?;
+            Terminal::set_cursor_to(Position {
+                x: size.width / 2,
+                y: size.height / 3,
+            })?;
+            Terminal::print("TEd 1.x")?;
+        }
+        Terminal::set_cursor_to(self.cursor_position)?;
+        Terminal::show_cursor()?;
+        Terminal::execute()?;
+        Ok(())
+    }
+
+    fn draw_rows(&self) -> Result<(), Error> {
+        let Size { height, .. } = Terminal::size()?;
+        Terminal::set_cursor_to(Position::zero())?;
+
+        for current_row in 0..height {
+            Terminal::clear(ClearType::CurrentLine)?;
+            Terminal::print("~")?;
+
+            if current_row + 1 < height {
+                Terminal::print("\r\n")?;
+            }
+        }
+
+        Ok(())
     }
 }
