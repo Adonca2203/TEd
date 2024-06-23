@@ -1,6 +1,6 @@
 mod editor;
-use editor::Editor;
+use editor::TerminalEditor;
 
 fn main() {
-    Editor::default().run();
+    TerminalEditor::default().run();
 }
