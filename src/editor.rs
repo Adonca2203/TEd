@@ -1,29 +1,36 @@
-use crossterm::event::{read, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers};
+use crossterm::event::{read, Event::Key, KeyCode::Char, Event::Resize, KeyEvent, KeyModifiers};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use std::io::Error;
+use terminal_view::View;
 
 mod terminal;
+mod terminal_view;
 use crossterm::terminal::ClearType;
-use terminal::{Position, Size, Terminal};
+use terminal::{Position, Terminal};
 
+#[derive(Default)]
 pub struct TerminalEditor {
     should_quit: bool,
     cursor_position: Position,
+    view: View,
 }
 
 impl TerminalEditor {
-    pub const fn default() -> Self {
-        Self {
-            should_quit: false,
-            cursor_position: Position::zero(),
-        }
-    }
-
-    pub fn run(&mut self) {
+    pub fn run(&mut self, file_name: &str) {
         Terminal::initialize().unwrap();
-        let result = self.repl();
-        Terminal::terminate().unwrap();
-        result.unwrap();
+        self.view.needs_render = true;
+
+        match self.view.load(file_name) {
+            Ok(..) => {
+                let result = self.repl();
+                Terminal::terminate().unwrap();
+                result.unwrap();
+            }
+            Err(err) => {
+                Terminal::print(&err.to_string()).unwrap();
+                Terminal::terminate().unwrap();
+            }
+        }
     }
 
     fn repl(&mut self) -> Result<(), Error> {
@@ -71,9 +78,13 @@ impl TerminalEditor {
                 _ => (),
             }
         }
+
+        if let Resize(..) = event {
+            self.view.set_needs_render(true);
+        }
     }
 
-    fn refresh_screen(&self) -> Result<(), Error> {
+    fn refresh_screen(&mut self) -> Result<(), Error> {
         Terminal::hide_cursor()?;
         if self.should_quit {
             Terminal::clear(ClearType::All)?;
@@ -83,33 +94,11 @@ impl TerminalEditor {
             Terminal::execute()?;
             return Ok(());
         } else {
-            self.draw_rows()?;
-            let size = Terminal::size()?;
-            Terminal::set_cursor_to(Position {
-                x: size.width / 2,
-                y: size.height / 3,
-            })?;
-            Terminal::print("TEd 1.x")?;
+            self.view.render()?;
         }
         Terminal::set_cursor_to(self.cursor_position)?;
         Terminal::show_cursor()?;
         Terminal::execute()?;
-        Ok(())
-    }
-
-    fn draw_rows(&self) -> Result<(), Error> {
-        let Size { height, .. } = Terminal::size()?;
-        Terminal::set_cursor_to(Position::zero())?;
-
-        for current_row in 0..height {
-            Terminal::clear(ClearType::CurrentLine)?;
-            Terminal::print("~")?;
-
-            if current_row + 1 < height {
-                Terminal::print("\r\n")?;
-            }
-        }
-
         Ok(())
     }
 }

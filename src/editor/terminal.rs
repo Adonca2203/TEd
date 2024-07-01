@@ -8,14 +8,14 @@ pub struct Terminal {}
 
 #[derive(Clone, Copy)]
 pub struct Size {
-    pub height: u16,
-    pub width: u16,
+    pub height: usize,
+    pub width: usize,
 }
 
 #[derive(Clone, Copy)]
 pub struct Position {
-    pub x: u16,
-    pub y: u16,
+    pub x: usize,
+    pub y: usize,
 }
 
 impl Position {
@@ -24,7 +24,12 @@ impl Position {
     }
 }
 
-#[derive(Clone, Copy)]
+impl Default for Position {
+    fn default() -> Self {
+        Position::zero()
+    }
+}
+
 pub enum Direction {
     LEFT,
     RIGHT,
@@ -52,7 +57,7 @@ impl Terminal {
     }
 
     pub fn set_cursor_to(pos: Position) -> Result<(), Error> {
-        Self::queue_command(MoveTo(pos.x, pos.y))
+        Self::queue_command(MoveTo(pos.x as u16, pos.y as u16))
     }
 
     pub fn move_curstor_to(dir: Direction) -> Result<(), Error> {
@@ -65,15 +70,18 @@ impl Terminal {
     }
 
     pub fn get_cursor_position() -> Position {
-        Position{
-            x: cursor::position().unwrap().0,
-            y: cursor::position().unwrap().1,
+        Position {
+            x: cursor::position().unwrap().0 as usize,
+            y: cursor::position().unwrap().1 as usize,
         }
     }
 
     pub fn size() -> Result<Size, Error> {
         let (width, height) = size()?;
-        Ok(Size { height, width })
+        Ok(Size {
+            height: height as usize,
+            width: width as usize,
+        })
     }
 
     pub fn show_cursor() -> Result<(), Error> {
